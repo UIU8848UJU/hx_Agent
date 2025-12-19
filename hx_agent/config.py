@@ -8,13 +8,16 @@ class Settings:
     ROOT: Path = Path(__file__).resolve().parents[1]
 
     KB_DB: Path = ROOT / "kb.sqlite"
-    SCHEMA_SQL: Path = Path(__file__).resolve().parent / "db" / "schema.sql"
+    SCHEMA_SQL: Path = Path(__file__).resolve().parent / "index" / "sql" / "schema.sql"
 
     OUT_DIR: Path = ROOT / "out"
     CACHE_DIR: Path = ROOT / "cache"
 
     # 切块策略版本（进库，用于回归）
     CHUNK_POLICY_VERSION: str = "md_v1"
+
+    # 读取文件类型配置
+    DEFAULT_FILE_TAIL: tuple[str, ...] = (".md", ".txt")
 
 # 导出 settings
 settings = Settings()
