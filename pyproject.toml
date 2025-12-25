@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hx-agent"
+version = "0.1.0"
+description = "SQLite-first document organizer & knowledge base agent (CLI)"
+requires-python = ">=3.10"
+dependencies = [
+  "typer>=0.12",
+  "rich>=13.7",
+]
+
+[project.scripts]
+hx-agent = "hx_agent.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hx_agent*"]
