@@ -18,6 +18,9 @@ class Settings:
 
     # 读取文件类型配置
     DEFAULT_FILE_TAIL: tuple[str, ...] = (".md", ".txt")
+    
+    # data存放资源文件的位置，后续可以写入特定的目录
+    DEFAULT_DATA: Path = ROOT/ "data"
 
 # 导出 settings
 settings = Settings()
