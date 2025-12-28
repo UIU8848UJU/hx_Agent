@@ -2,6 +2,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 import hashlib
+import json
+import time
 from typing import Iterable, Optional, Tuple, List, Dict, Any
 
 from hx_agent.app_context import settings, get_ctx
@@ -183,3 +185,68 @@ def stats():
         chunks = conn.execute("select count(*) from chunks").fetchone()[0]
         fts = conn.execute("select count(*) from chunks_fts").fetchone()[0]
     return files, chunks, fts
+
+
+def ensure_runs_table(conn) -> None:
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS runs(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      chunk_policy_version TEXT,
+      notes TEXT
+    )
+    """)
+
+def start_run(chunk_policy_version: str) -> int:
+    with connect() as conn:
+        ensure_runs_table(conn)
+        cur = conn.execute(
+            "INSERT INTO runs(started_at, chunk_policy_version, notes) VALUES(datetime('now'), ?, ?)",
+            (chunk_policy_version, json.dumps({"status": "running"}, ensure_ascii=False)),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+
+def finish_run(run_id: int, notes: dict) -> None:
+    with connect() as conn:
+        ensure_runs_table(conn)
+        conn.execute(
+            "UPDATE runs SET finished_at=datetime('now'), notes=? WHERE id=?",
+            (json.dumps(notes, ensure_ascii=False), int(run_id)),
+        )
+        conn.commit()
+
+def get_last_run():
+    with connect() as conn:
+        ensure_runs_table(conn)
+        row = conn.execute(
+            "SELECT id, started_at, finished_at, chunk_policy_version, notes FROM runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    return row
+
+
+# 取一个chunk全文查询
+def get_chunks_by_ids(chunk_ids: list[int]):
+    if not chunk_ids:
+        return []
+
+    qmarks = ",".join(["?"] * len(chunk_ids))
+    with connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+              c.id AS chunk_id,
+              f.path AS path,
+              c.heading AS heading,
+              c.start_offset AS start_line,
+              c.end_offset AS end_line,
+              c.chunk_index AS chunk_index,
+              c.text AS text
+            FROM chunks c
+            JOIN files f ON f.id = c.file_id
+            WHERE c.id IN ({qmarks})
+            """,
+            [int(x) for x in chunk_ids],
+        ).fetchall()
+    return rows

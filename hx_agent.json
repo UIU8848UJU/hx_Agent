@@ -1,0 +1,25 @@
+{
+  "db_path": "kb.sqlite",
+  "out_dir": "out",
+  "cache_dir": "cache",
+  "vectors_dir": "vectors",
+  "log": {
+    "level": "INFO",
+    "to_console": true,
+    "to_file": true,
+    "file": "cache/logs/hx_agent.log",
+    "rotate_mb": 5,
+    "backups": 3
+  },
+  "ingest": {
+    "include_exts": [
+      ".md",
+      ".txt"
+    ]
+  },
+  "chunk": {
+    "policy_version": "md_v1",
+    "target_chars": 800,
+    "overlap_chars": 120
+  }
+}
