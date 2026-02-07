@@ -25,7 +25,9 @@ from hx_agent.ingest.chunker_md import chunk_markdown
 from hx_agent.index.meta_store import search_fts
 import re
 from hx_agent.reformat import ReformatOptions, reformat_text
-
+from hx_agent.core.logging import get_logger
+# 统一日志入口
+log = get_logger(__name__)
 
 _HTML_RE = re.compile(r"<[^>]+>")
 
@@ -48,16 +50,20 @@ def init_config():
     print(f"config ready: {path}")
     
 
+
 # 查找数据库的位置
 @app.command()
 def doctor():
     """健康检查：路径/目录/DB位置。"""
-    ctx = get_ctx()
-
+    # ctx = get_ctx()
+    ctx = get_logger(__name__)
     files, chunks, fts = stats()
-    ctx.logger.info(f"FILES: {files}")
-    ctx.logger.info(f"CHUNKS: {chunks}")
-    ctx.logger.info(f"FTS:   {fts}")
+    # ctx.logger.info(f"FILES: {files}")
+    # ctx.logger.info(f"CHUNKS: {chunks}")
+    # ctx.logger.info(f"FTS:   {fts}")
+    ctx.info(f"FILES: {files}")
+    ctx.info(f"CHUNKS: {chunks}")
+    ctx.info(f"FTS:   {fts}")
     last = get_last_run()
     
     _ensure_dirs()
@@ -69,13 +75,13 @@ def doctor():
         print(f"  notes: scanned={n.get('scanned')} rebuilt_files={n.get('rebuilt_files')} skipped={n.get('skipped')} inserted_chunks={n.get('inserted_chunks')} failed={len(n.get('failed') or [])} elapsed_sec={n.get('elapsed_sec')}")
     except Exception:
         print("  notes: (unparseable)")
-    ctx.logger.debug("[bold green]OK[/bold green] hx-agent doctor")
-    ctx.logger.debug(f"ROOT: {settings.ROOT}")
-    ctx.logger.debug(f"KB_DB: {settings.KB_DB}")
-    ctx.logger.debug(f"SCHEMA_SQL: {settings.SCHEMA_SQL}")
-    ctx.logger.debug(f"OUT_DIR: {settings.OUT_DIR}")
-    ctx.logger.debug(f"CACHE_DIR: {settings.CACHE_DIR}")
-    ctx.logger.debug(f"CHUNK_POLICY_VERSION: {settings.CHUNK_POLICY_VERSION}")
+    ctx.debug("[bold green]OK[/bold green] hx-agent doctor")
+    ctx.debug(f"ROOT: {settings.ROOT}")
+    ctx.debug(f"KB_DB: {settings.KB_DB}")
+    ctx.debug(f"SCHEMA_SQL: {settings.SCHEMA_SQL}")
+    ctx.debug(f"OUT_DIR: {settings.OUT_DIR}")
+    ctx.debug(f"CACHE_DIR: {settings.CACHE_DIR}")
+    ctx.debug(f"CHUNK_POLICY_VERSION: {settings.CHUNK_POLICY_VERSION}")
     
 
 # 初始化数据库

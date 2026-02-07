@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
-from typing import Optional, Protocol
+from typing import Protocol
 
 class ILogger(Protocol):
     def debug(self, msg: str, *args, **kwargs) -> None: ...
@@ -44,7 +44,7 @@ def create_logger(opt: LoggerOptions, repo_root: Path) -> ILogger:
     logger.setLevel(level)
 
     fmt = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        fmt="%(asctime)s | %(levelname)s | %(name)s | %(module)s.%(funcName)s:%(lineno)d | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 

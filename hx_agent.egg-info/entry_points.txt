@@ -1,0 +1,2 @@
+[console_scripts]
+hx-agent = hx_agent.cli:app

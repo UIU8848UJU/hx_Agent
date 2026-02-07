@@ -5,7 +5,7 @@ from typing import Optional
 
 from hx_agent.config import settings                      
 from hx_agent.core.config import load_config, AppConfig, save_default_config
-from hx_agent.core.logger import create_logger, LoggerOptions, ILogger
+from hx_agent.core.logging import setup_logging, LoggerOptions
 
 CONFIG_PATH = settings.ROOT / "hx_agent.json"
 
@@ -14,7 +14,6 @@ class AppContext:
     repo_root: Path
     config_path: Path
     cfg: AppConfig
-    logger: ILogger
 
 _ctx: Optional[AppContext] = None
 
@@ -23,10 +22,11 @@ def get_ctx() -> AppContext:
     global _ctx
     if _ctx is not None:
         return _ctx
+    ensure_default_config()
 
     cfg = load_config(CONFIG_PATH)
 
-    # 把 cfg.log 映射到 LoggerOptions（你现在 logger 还是 LoggerOptions）
+    # 把 cfg.log 映射到 LoggerOptions，然后只配置一次 logging
     opt = LoggerOptions(
         level=cfg.log.level,
         to_console=cfg.log.to_console,
@@ -35,13 +35,13 @@ def get_ctx() -> AppContext:
         rotate_mb=cfg.log.rotate_mb,
         backups=cfg.log.backups,
     )
-    logger = create_logger(opt, repo_root=settings.ROOT)
+    
+    setup_logging(opt, repo_root=settings.ROOT)
 
     _ctx = AppContext(
         repo_root=settings.ROOT,
         config_path=CONFIG_PATH,
         cfg=cfg,
-        logger=logger,
     )
     return _ctx
 
