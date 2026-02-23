@@ -71,10 +71,11 @@ def _hash_text(text: str) -> str:
 def delete_chunks_for_file(file_id: int) -> None:
     """先删 FTS，再删 chunks（避免失去 rowid 对应）"""
     with connect() as conn:
-        conn.execute(
-            'DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE file_id=?)',
-            (file_id,),
-        )
+        rows = conn.execute('SELECT id FROM chunks WHERE file_id=?', (file_id,)).fetchall()
+        if rows:
+            for (cid,) in rows:
+                conn.execute("INSERT INTO chunks_fts(chunks_fts, rowid) VALUES('delete', ?)", (int(cid),))
+
         conn.execute('DELETE FROM chunks WHERE file_id=?', (file_id,))
         conn.commit()
 

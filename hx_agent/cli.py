@@ -187,8 +187,6 @@ def ingest(
                 if rebuild:
                     changed = True
 
-                scanned += 1
-
                 if not changed:
                     skipped += 1
                     ctx.logger.debug('[cli::ingest] skipped same file: %s', db_path)
