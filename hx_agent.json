@@ -11,12 +11,14 @@
     "rotate_mb": 5,
     "backups": 3
   },
+
   "ingest": {
     "include_exts": [
       ".md",
       ".txt"
     ]
   },
+  
   "chunk": {
     "policy_version": "md_v1",
     "target_chars": 800,

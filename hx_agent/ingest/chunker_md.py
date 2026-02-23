@@ -1,11 +1,13 @@
 # 切md的文档模块
 
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+_HEADING_RE = re.compile(r'^(#{1,6})\s+(.+?)\s*$')
+
 
 @dataclass
 class Chunk:
@@ -13,6 +15,7 @@ class Chunk:
     start_line: int
     end_line: int
     text: str
+
 
 def chunk_markdown(text: str) -> List[Dict[str, Any]]:
     """
@@ -33,13 +36,13 @@ def chunk_markdown(text: str) -> List[Dict[str, Any]]:
 
     def current_heading() -> str:
         hs = [h for h in heading_stack if h]
-        return " > ".join(hs)
+        return ' > '.join(hs)
 
     def flush(end_line: int):
         nonlocal buf, buf_start
         if not buf:
             return
-        content = "\n".join(buf).strip()
+        content = '\n'.join(buf).strip()
         if content:
             chunks.append(Chunk(current_heading(), buf_start, end_line, content))
         buf = []
@@ -48,7 +51,7 @@ def chunk_markdown(text: str) -> List[Dict[str, Any]]:
         line = raw
 
         # fenced code toggle
-        if line.strip().startswith("```") or line.strip().startswith("~~~"):
+        if line.strip().startswith('```') or line.strip().startswith('~~~'):
             mark = line.strip()[:3]
             if not in_code:
                 in_code = True
@@ -75,11 +78,11 @@ def chunk_markdown(text: str) -> List[Dict[str, Any]]:
                 # level=1 -> index 0
                 idx = level - 1
                 while len(heading_stack) < 6:
-                    heading_stack.append("")
+                    heading_stack.append('')
                 heading_stack[idx] = title
                 # 清空更深层
                 for j in range(idx + 1, 6):
-                    heading_stack[j] = ""
+                    heading_stack[j] = ''
 
                 buf.append(line)
                 continue
@@ -90,6 +93,6 @@ def chunk_markdown(text: str) -> List[Dict[str, Any]]:
 
     # 返回 dict，方便 DB 写入
     return [
-        {"heading": c.heading, "start_line": c.start_line, "end_line": c.end_line, "text": c.text}
+        {'heading': c.heading, 'start_line': c.start_line, 'end_line': c.end_line, 'text': c.text}
         for c in chunks
     ]

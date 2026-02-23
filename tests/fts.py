@@ -1,16 +1,16 @@
-import sqlite3
-from pathlib import Path
-from hx_agent.config import settings
-from hx_agent.core.logging import setup_logging, get_logger
+from hx_agent.core.logging import get_logger
 
 log = get_logger(__name__)
 
+
 def foo():
-    log.info("hello")
-    
+    log.info('hello')
+
 
 def main():
     foo()
+
+
 # con = sqlite3.connect(settings.KB_DB)
 # print("fts count:", con.execute("select count(*) from chunks_fts").fetchone())
 # print("fts rowid range:", con.execute("select min(rowid), max(rowid) from chunks_fts").fetchone())

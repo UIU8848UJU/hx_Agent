@@ -1,6 +1,6 @@
 from __future__ import annotations
-from collections import defaultdict
 
+from collections import defaultdict
 
 
 def stitch_chunks(rows, neighbor_gap: int = 1):
@@ -10,11 +10,11 @@ def stitch_chunks(rows, neighbor_gap: int = 1):
     """
     by_path = defaultdict(list)
     for r in rows:
-        by_path[r["path"]].append(r)
+        by_path[r['path']].append(r)
 
     stitched = []
     for path, items in by_path.items():
-        items.sort(key=lambda x: int(x.get("chunk_index", 0)))
+        items.sort(key=lambda x: int(x.get('chunk_index', 0)))
 
         cur = None
         for it in items:
@@ -22,14 +22,14 @@ def stitch_chunks(rows, neighbor_gap: int = 1):
                 cur = dict(it)
                 continue
 
-            if "chunk_index" in it and "chunk_index" in cur:
-                if int(it["chunk_index"]) <= int(cur["chunk_index"]) + neighbor_gap:
-                    cur["text"] = (cur["text"] + "\n" + it["text"]).strip()
-                    cur["end_line"] = max(int(cur["end_line"]), int(it["end_line"]))
+            if 'chunk_index' in it and 'chunk_index' in cur:
+                if int(it['chunk_index']) <= int(cur['chunk_index']) + neighbor_gap:
+                    cur['text'] = (cur['text'] + '\n' + it['text']).strip()
+                    cur['end_line'] = max(int(cur['end_line']), int(it['end_line']))
                     # 引用聚合：保留 chunk_id 列表
-                    cur.setdefault("chunk_ids", [int(cur["chunk_id"])])
-                    cur["chunk_ids"].append(int(it["chunk_id"]))
-                    cur["chunk_index"] = max(int(cur["chunk_index"]), int(it["chunk_index"]))
+                    cur.setdefault('chunk_ids', [int(cur['chunk_id'])])
+                    cur['chunk_ids'].append(int(it['chunk_id']))
+                    cur['chunk_index'] = max(int(cur['chunk_index']), int(it['chunk_index']))
                     continue
 
             stitched.append(cur)
@@ -40,10 +40,11 @@ def stitch_chunks(rows, neighbor_gap: int = 1):
 
     # 如果没有 chunk_ids，补上自己
     for s in stitched:
-        if "chunk_ids" not in s:
-            s["chunk_ids"] = [int(s["chunk_id"])]
+        if 'chunk_ids' not in s:
+            s['chunk_ids'] = [int(s['chunk_id'])]
 
     return stitched
+
 
 def summarize_rule(text: str, mode: str):
     """
@@ -53,21 +54,21 @@ def summarize_rule(text: str, mode: str):
     """
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if not lines:
-        return ""
+        return ''
 
-    if mode == "steps":
+    if mode == 'steps':
         keep = []
         for ln in lines:
-            if ln.startswith(("-", "*")):
+            if ln.startswith(('-', '*')):
                 keep.append(ln)
-            elif ln[:2].isdigit() and (ln[2:3] in [".", "、"]):
+            elif ln[:2].isdigit() and (ln[2:3] in ['.', '、']):
                 keep.append(ln)
-            elif any(k in ln for k in ["步骤", "流程", "做法", "建议", "注意"]):
+            elif any(k in ln for k in ['步骤', '流程', '做法', '建议', '注意']):
                 keep.append(ln)
         if keep:
-            return "\n".join(keep[:12])
+            return '\n'.join(keep[:12])
         # 没提取到就退化成 summary
-        mode = "summary"
+        mode = 'summary'
 
     # summary
-    return "\n".join(lines[:8])
+    return '\n'.join(lines[:8])

@@ -1,19 +1,23 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from pathlib import Path
+
 import logging
+from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
 
 @dataclass(frozen=True)
 class LoggerOptions:
-    level: str = "INFO"
+    level: str = 'INFO'
     to_console: bool = True
     to_file: bool = True
-    file: Path = Path("cache/logs/hx_agent.log")
+    file: Path = Path('cache/logs/hx_agent.log')
     rotate_mb: int = 5
     backups: int = 3
 
+
 _configured = False
+
 
 def setup_logging(repo_root: Path, opt: LoggerOptions) -> None:
     """全局只配置一次 hx_agent logger 的 handler/format。"""
@@ -23,13 +27,13 @@ def setup_logging(repo_root: Path, opt: LoggerOptions) -> None:
 
     lvl = getattr(logging, opt.level.upper(), logging.INFO)
 
-    root = logging.getLogger("hx_agent")
+    root = logging.getLogger('hx_agent')
     root.setLevel(lvl)
     root.propagate = False  # 避免重复打印到 root logger
 
     fmt = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(name)s | %(module)s.%(funcName)s:%(lineno)d | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        fmt='%(asctime)s | %(levelname)s | %(name)s | %(module)s.%(funcName)s:%(lineno)d | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
     )
 
     if opt.to_console:
@@ -45,7 +49,7 @@ def setup_logging(repo_root: Path, opt: LoggerOptions) -> None:
             log_path,
             maxBytes=opt.rotate_mb * 1024 * 1024,
             backupCount=opt.backups,
-            encoding="utf-8",
+            encoding='utf-8',
         )
         fh.setLevel(lvl)
         fh.setFormatter(fmt)
@@ -53,11 +57,12 @@ def setup_logging(repo_root: Path, opt: LoggerOptions) -> None:
 
     _configured = True
 
+
 def get_logger(name: str) -> logging.Logger:
     """
     各模块用 get_logger(__name__) 获取 logger。
     统一挂到 hx_agent 命名空间下，确保能继承 handlers。
     """
-    if name == "hx_agent" or name.startswith("hx_agent."):
+    if name == 'hx_agent' or name.startswith('hx_agent.'):
         return logging.getLogger(name)
-    return logging.getLogger(f"hx_agent.{name}")
+    return logging.getLogger(f'hx_agent.{name}')

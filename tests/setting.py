@@ -4,7 +4,4 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-KB_DB = os.getenv(
-    "HX_KB_DB",
-    str(BASE_DIR / "kb.sqlite")
-)
+KB_DB = os.getenv('HX_KB_DB', str(BASE_DIR / 'kb.sqlite'))

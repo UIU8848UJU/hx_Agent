@@ -15,9 +15,29 @@ dependencies = [
 [project.scripts]
 hx-agent = "hx_agent.cli:app"
 
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.6.0",
+  "pre-commit>=3.7.0",
+]
+
 [tool.setuptools]
 package-dir = {"" = "."}
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["hx_agent*"]
+
+
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]  # E: 基础风格/缩进, F: 运行错误, I: import 排序
+ignore = ["E501"]         # 行太长交给 formatter 自己处理

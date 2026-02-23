@@ -1,49 +1,48 @@
 from __future__ import annotations
-import sqlite3
-from pathlib import Path
+
 import hashlib
 import json
-import time
-from typing import Iterable, Optional, Tuple, List, Dict, Any
+import sqlite3
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-from hx_agent.app_context import settings, get_ctx
+from hx_agent.app_context import get_ctx, settings
 
-meta_log =  get_ctx()
 
 def connect() -> sqlite3.Connection:
     """连接到知识库 SQLite 数据库。"""
+    ctx = get_ctx()
     db_path = Path(settings.KB_DB)
-    if(not db_path.exists()):
-        meta_log.logger.error("detalib is Not exist!")
-        raise RuntimeError(f"知识库数据库不存在: {db_path}")
+    if not db_path.exists():
+        ctx.logger.error('detalib is Not exist!')
+        raise RuntimeError(f'知识库数据库不存在: {db_path}')
     conn = sqlite3.connect(settings.KB_DB)
-    conn.row_factory = sqlite3.Row 
-    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON;')
     return conn
+
 
 def get_file_by_path(path: str) -> Optional[Tuple[int, str]]:
     """返回 (file_id, sha256) 或 None"""
     with connect() as conn:
-        row = conn.execute("SELECT id, sha256 FROM files WHERE path=?", (path,)).fetchone()
+        ctx = get_ctx()
+        row = conn.execute('SELECT id, sha256 FROM files WHERE path=?', (path,)).fetchone()
         if not row:
-            meta_log.logger.debug("[get_file_by_path]: files is same")
+            ctx.logger.debug('[get_file_by_path]: files is same')
             return None
         return int(row[0]), str(row[1])
-    
 
-def upsert_file_return_id(path: str
-                , mtime: int
-                , sha256: str
-                , size: int
-                , ftype: str
-                ) -> Tuple[int, bool]:
+
+def upsert_file_return_id(
+    path: str, mtime: int, sha256: str, size: int, ftype: str
+) -> Tuple[int, bool]:
     """
     Upsert files，并返回 (file_id, changed)
     changed: 该 path 之前不存在，或 sha256 与之前不同
     """
     prev = get_file_by_path(path)
     changed = (prev is None) or (prev[1] != sha256)
-    
+
     with connect() as conn:
         conn.execute(
             """
@@ -59,31 +58,33 @@ def upsert_file_return_id(path: str
             (path, mtime, sha256, size, ftype),
         )
         # 拿 file_id
-        (file_id,) = conn.execute("SELECT id FROM files WHERE path=?", (path,)).fetchone()
+        (file_id,) = conn.execute('SELECT id FROM files WHERE path=?', (path,)).fetchone()
         conn.commit()
     return int(file_id), changed
 
 
 def _hash_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+    return hashlib.sha256(text.encode('utf-8', errors='ignore')).hexdigest()
 
 
 # 这里是不是可以直接用SELECT id...存到列表当中去再删
 def delete_chunks_for_file(file_id: int) -> None:
     """先删 FTS，再删 chunks（避免失去 rowid 对应）"""
     with connect() as conn:
-        conn.execute("DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE file_id=?)", (file_id,))
-        conn.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
+        conn.execute(
+            'DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE file_id=?)',
+            (file_id,),
+        )
+        conn.execute('DELETE FROM chunks WHERE file_id=?', (file_id,))
         conn.commit()
 
 
-
 def insert_chunks_and_fts(
-    file_id: int,   # 文件id号
-    path: str,      #路径名
-    chunk_policy_version: str, # 切块的版本
-    chunks: List[Dict[str, Any]], # 总共切了多少块
-    ) -> int:
+    file_id: int,  # 文件id号
+    path: str,  # 路径名
+    chunk_policy_version: str,  # 切块的版本
+    chunks: List[Dict[str, Any]],  # 总共切了多少块
+) -> int:
     """
     chunks: [{'heading': str, 'start_line': int, 'end_line': int, 'text': str}, ...]
     返回插入 chunk 数量
@@ -91,10 +92,10 @@ def insert_chunks_and_fts(
     with connect() as conn:
         inserted = 0
         for idx, c in enumerate(chunks):
-            text = c["text"]
-            heading = c.get("heading") or ""
-            start_line = int(c.get("start_line", 0))
-            end_line = int(c.get("end_line", 0))
+            text = c['text']
+            heading = c.get('heading') or ''
+            start_line = int(c.get('start_line', 0))
+            end_line = int(c.get('end_line', 0))
             text_hash = _hash_text(text)
 
             cur = conn.execute(
@@ -102,13 +103,22 @@ def insert_chunks_and_fts(
                 INSERT INTO chunks(file_id, chunk_index, heading, start_offset, end_offset, text, text_hash, chunk_policy_version)
                 VALUES(?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (file_id, idx, heading, start_line, end_line, text, text_hash, chunk_policy_version),
+                (
+                    file_id,
+                    idx,
+                    heading,
+                    start_line,
+                    end_line,
+                    text,
+                    text_hash,
+                    chunk_policy_version,
+                ),
             )
             chunk_id = int(cur.lastrowid)
 
             # FTS rowid = chunk_id
             conn.execute(
-                "INSERT OR REPLACE INTO chunks_fts(rowid, text, path, heading) VALUES(?, ?, ?, ?)",
+                'INSERT OR REPLACE INTO chunks_fts(rowid, text, path, heading) VALUES(?, ?, ?, ?)',
                 (chunk_id, text, path, heading),
             )
             inserted += 1
@@ -147,24 +157,26 @@ def search_fts(query: str, topk: int = 10):
     for r in rows:
         out.append(
             {
-                "chunk_id": int(r["chunk_id"]),
-                "path": str(r["path"]),
-                "heading": str(r["heading"] or ""),
-                "start": int(r["start_line"] or 0),
-                "end": int(r["end_line"] or 0),
-                "snippet": (r["snip"] or "").replace("\n"," "),
-                "score": float(r["score"]),
+                'chunk_id': int(r['chunk_id']),
+                'path': str(r['path']),
+                'heading': str(r['heading'] or ''),
+                'start': int(r['start_line'] or 0),
+                'end': int(r['end_line'] or 0),
+                'snippet': (r['snip'] or '').replace('\n', ' '),
+                'score': float(r['score']),
             }
         )
     return out
 
-def count_files()-> int:
+
+def count_files() -> int:
     """统计 files 表中的记录数"""
     with connect() as conn:
-        (n,) = conn.execute("SELECT COUNT(*) FROM files;").fetchone()
+        (n,) = conn.execute('SELECT COUNT(*) FROM files;').fetchone()
         conn.row_factory = sqlite3.Row
         return int(n)
-    
+
+
 # 查询某个笔记
 def get_chunk(chunk_id: int):
     with connect() as conn:
@@ -181,9 +193,9 @@ def get_chunk(chunk_id: int):
 
 def stats():
     with connect() as conn:
-        files = conn.execute("select count(*) from files").fetchone()[0]
-        chunks = conn.execute("select count(*) from chunks").fetchone()[0]
-        fts = conn.execute("select count(*) from chunks_fts").fetchone()[0]
+        files = conn.execute('select count(*) from files').fetchone()[0]
+        chunks = conn.execute('select count(*) from chunks').fetchone()[0]
+        fts = conn.execute('select count(*) from chunks_fts').fetchone()[0]
     return files, chunks, fts
 
 
@@ -198,15 +210,17 @@ def ensure_runs_table(conn) -> None:
     )
     """)
 
+
 def start_run(chunk_policy_version: str) -> int:
     with connect() as conn:
         ensure_runs_table(conn)
         cur = conn.execute(
             "INSERT INTO runs(started_at, chunk_policy_version, notes) VALUES(datetime('now'), ?, ?)",
-            (chunk_policy_version, json.dumps({"status": "running"}, ensure_ascii=False)),
+            (chunk_policy_version, json.dumps({'status': 'running'}, ensure_ascii=False)),
         )
         conn.commit()
         return int(cur.lastrowid)
+
 
 def finish_run(run_id: int, notes: dict) -> None:
     with connect() as conn:
@@ -217,11 +231,12 @@ def finish_run(run_id: int, notes: dict) -> None:
         )
         conn.commit()
 
+
 def get_last_run():
     with connect() as conn:
         ensure_runs_table(conn)
         row = conn.execute(
-            "SELECT id, started_at, finished_at, chunk_policy_version, notes FROM runs ORDER BY id DESC LIMIT 1"
+            'SELECT id, started_at, finished_at, chunk_policy_version, notes FROM runs ORDER BY id DESC LIMIT 1'
         ).fetchone()
     return row
 
@@ -231,7 +246,7 @@ def get_chunks_by_ids(chunk_ids: list[int]):
     if not chunk_ids:
         return []
 
-    qmarks = ",".join(["?"] * len(chunk_ids))
+    qmarks = ','.join(['?'] * len(chunk_ids))
     with connect() as conn:
         rows = conn.execute(
             f"""
