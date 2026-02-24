@@ -26,7 +26,9 @@ from hx_agent.index.meta_store import (
 )
 from hx_agent.ingest.chunker_md import chunk_markdown
 from hx_agent.ingest.scanner import file_sha256, iter_docs
+from hx_agent.organize.service import organize_target
 from hx_agent.reformat import ReformatOptions, reformat_text
+from hx_agent.study.service import end_session, list_notes, start_session, study_ask
 
 # 统一日志入口
 log = get_logger(__name__)
@@ -35,6 +37,8 @@ _HTML_RE = re.compile(r'<[^>]+>')
 
 # 用于测试
 app = typer.Typer(add_completion=False)
+study_app = typer.Typer(help='companioned learning session commands')
+app.add_typer(study_app, name='study')
 
 
 def _ensure_dirs():
@@ -49,7 +53,8 @@ def strip_html(s: str) -> str:
 # 初始化配置文件的调试
 @app.command('init-config')
 def init_config():
-    path = ensure_default_config()
+    path = settings.ROOT / 'hx_agent.json'
+    ensure_default_config(path)
     print(f'config ready: {path}')
 
 
@@ -348,6 +353,71 @@ def reformat(
     dst = out_dir / f'{src.stem}.reformatted.{template}.md'
     dst.write_text(formatted, encoding='utf-8')
     print(f'OK reformat -> {dst}')
+
+
+@study_app.command('start')
+def study_start(
+    name: str = typer.Option('Study Session', '--name', help='session display name'),
+    source: str = typer.Option('data', '--source', help='book/material root'),
+):
+    sid = start_session(name=name, source_path=str(Path(source).resolve()))
+    print(f'OK session started: id={sid} name={name}')
+
+
+@study_app.command('ask')
+def study_ask_cmd(
+    query: str = typer.Argument(...),
+    mode: str = typer.Option('summary', '--mode'),
+    topk: int = typer.Option(8, '--topk'),
+    session_id: int = typer.Option(0, '--session-id'),
+):
+    sid = session_id if session_id > 0 else None
+    out = study_ask(query=query, mode=mode, topk=topk, session_id=sid)
+    print(f'Q: {query}')
+    print('-' * 60)
+    print(out['answer'])
+    print('\nCitations:')
+    for i, c in enumerate(out['citations'], start=1):
+        ref = f'{c["path"]}#L{c["start_line"]}-L{c["end_line"]}'
+        ids = ','.join(map(str, c.get('chunk_ids', [])))
+        heading = c.get('heading', '')
+        if heading:
+            print(f'[{i}] {ref} (chunks: {ids}) | {heading}')
+        else:
+            print(f'[{i}] {ref} (chunks: {ids})')
+    print(f'\nSaved note_id={out["note_id"]} in session_id={out["session_id"]}')
+
+
+@study_app.command('end')
+def study_end(
+    session_id: int = typer.Option(0, '--session-id'),
+):
+    sid = end_session(session_id if session_id > 0 else None)
+    print(f'OK session ended: id={sid}')
+
+
+@study_app.command('notes')
+def study_notes(
+    session_id: int = typer.Option(0, '--session-id'),
+):
+    notes = list_notes(session_id if session_id > 0 else None)
+    if not notes:
+        print('No notes.')
+        return
+    for n in notes:
+        print(f'[{n["id"]}] {n["title"]} @ {n["created_at"]}')
+        print(n['body'][:220])
+        print()
+
+
+@app.command()
+def organize(
+    target: str,
+    template: str = typer.Option('sop', '--template'),
+    out: str = typer.Option('out/organized', '--out'),
+):
+    res = organize_target(target_path=target, template=template, out_dir=out)
+    print(f'OK organize run_id={res["run_id"]} -> {res["output_path"]}')
 
 
 if __name__ == '__main__':

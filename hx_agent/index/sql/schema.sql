@@ -44,3 +44,45 @@ USING fts5(
 
 CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_text_hash ON chunks(text_hash);
+
+CREATE TABLE IF NOT EXISTS study_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  source_path TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  ended_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS study_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  citations_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS study_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  citations_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS organize_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  target_path TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  output_path TEXT NOT NULL,
+  status TEXT NOT NULL,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_messages_session_id ON study_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_study_notes_session_id ON study_notes(session_id);

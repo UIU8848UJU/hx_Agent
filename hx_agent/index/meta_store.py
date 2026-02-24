@@ -128,31 +128,34 @@ def insert_chunks_and_fts(
     return inserted
 
 
-def search_fts(query: str, topk: int = 10):
+def search_fts(query: str, topk: int = 10, path_prefix: Optional[str] = None):
     """
     返回: [{'chunk_id', 'path', 'heading', 'snippet', 'score'}...]
     bm25 越小越相关（FTS5）
     """
+    sql = """
+        SELECT
+          chunks_fts.rowid AS chunk_id,
+          f.path    AS path,
+          c.heading AS heading,
+          c.start_offset AS start_line,
+          c.end_offset   AS end_line,
+          substr(c.text, 1, 220) AS snip,
+          bm25(chunks_fts) AS score
+        FROM chunks_fts
+        JOIN chunks c ON c.id = chunks_fts.rowid
+        JOIN files  f ON f.id = c.file_id
+        WHERE chunks_fts MATCH ?
+    """
+    args: list[Any] = [query]
+    if path_prefix:
+        sql += ' AND f.path LIKE ? '
+        args.append(f'{path_prefix}%')
+    sql += ' ORDER BY score LIMIT ? '
+    args.append(int(topk))
+
     with connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT
-              chunks_fts.rowid AS chunk_id,
-              f.path    AS path,
-              c.heading AS heading,
-              c.start_offset AS start_line,
-              c.end_offset   AS end_line,
-              substr(c.text, 1, 220) AS snip,
-              bm25(chunks_fts) AS score
-            FROM chunks_fts
-            JOIN chunks c ON c.id = chunks_fts.rowid
-            JOIN files  f ON f.id = c.file_id
-            WHERE chunks_fts MATCH ?
-            ORDER BY score
-            LIMIT ?
-            """,
-            (query, int(topk)),
-        ).fetchall()
+        rows = conn.execute(sql, args).fetchall()
 
     out = []
     for r in rows:
@@ -168,6 +171,29 @@ def search_fts(query: str, topk: int = 10):
             }
         )
     return out
+
+
+def get_chunks_by_path_prefix(path_prefix: str, topk: int = 8):
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+              c.id AS chunk_id,
+              f.path AS path,
+              c.heading AS heading,
+              c.start_offset AS start_line,
+              c.end_offset AS end_line,
+              c.chunk_index AS chunk_index,
+              c.text AS text
+            FROM chunks c
+            JOIN files f ON f.id = c.file_id
+            WHERE f.path LIKE ?
+            ORDER BY c.id ASC
+            LIMIT ?
+            """,
+            (f'{path_prefix}%', int(topk)),
+        ).fetchall()
+    return rows
 
 
 def count_files() -> int:
@@ -210,6 +236,54 @@ def ensure_runs_table(conn) -> None:
       notes TEXT
     )
     """)
+
+
+def ensure_v2_tables(conn) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS study_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          source_path TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          ended_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS study_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id INTEGER NOT NULL,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL,
+          citations_json TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS study_notes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          body TEXT NOT NULL,
+          citations_json TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS organize_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          target_path TEXT NOT NULL,
+          mode TEXT NOT NULL,
+          output_path TEXT NOT NULL,
+          status TEXT NOT NULL,
+          notes TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_study_messages_session_id ON study_messages(session_id);
+        CREATE INDEX IF NOT EXISTS idx_study_notes_session_id ON study_notes(session_id);
+        """
+    )
 
 
 def start_run(chunk_policy_version: str) -> int:
@@ -266,3 +340,140 @@ def get_chunks_by_ids(chunk_ids: list[int]):
             [int(x) for x in chunk_ids],
         ).fetchall()
     return rows
+
+
+def create_study_session(name: str, source_path: str) -> int:
+    with connect() as conn:
+        ensure_v2_tables(conn)
+        cur = conn.execute(
+            """
+            INSERT INTO study_sessions(name, source_path, status, created_at)
+            VALUES(?, ?, 'active', datetime('now'))
+            """,
+            (name, source_path),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+
+
+def get_study_session(session_id: int):
+    with connect() as conn:
+        ensure_v2_tables(conn)
+        return conn.execute(
+            """
+            SELECT id, name, source_path, status, created_at, ended_at
+            FROM study_sessions
+            WHERE id=?
+            """,
+            (int(session_id),),
+        ).fetchone()
+
+
+def get_active_study_session():
+    with connect() as conn:
+        ensure_v2_tables(conn)
+        return conn.execute(
+            """
+            SELECT id, name, source_path, status, created_at, ended_at
+            FROM study_sessions
+            WHERE status='active'
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+
+
+def end_study_session(session_id: int) -> None:
+    with connect() as conn:
+        ensure_v2_tables(conn)
+        conn.execute(
+            """
+            UPDATE study_sessions
+            SET status='ended', ended_at=datetime('now')
+            WHERE id=?
+            """,
+            (int(session_id),),
+        )
+        conn.commit()
+
+
+def add_study_message(
+    session_id: int,
+    role: str,
+    content: str,
+    citations: Optional[List[Dict[str, Any]]] = None,
+) -> int:
+    with connect() as conn:
+        ensure_v2_tables(conn)
+        cur = conn.execute(
+            """
+            INSERT INTO study_messages(session_id, role, content, citations_json, created_at)
+            VALUES(?, ?, ?, ?, datetime('now'))
+            """,
+            (
+                int(session_id),
+                role,
+                content,
+                json.dumps(citations or [], ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+
+
+def add_study_note(
+    session_id: int,
+    title: str,
+    body: str,
+    citations: Optional[List[Dict[str, Any]]] = None,
+) -> int:
+    with connect() as conn:
+        ensure_v2_tables(conn)
+        cur = conn.execute(
+            """
+            INSERT INTO study_notes(session_id, title, body, citations_json, created_at)
+            VALUES(?, ?, ?, ?, datetime('now'))
+            """,
+            (
+                int(session_id),
+                title,
+                body,
+                json.dumps(citations or [], ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+
+
+def list_study_notes(session_id: int):
+    with connect() as conn:
+        ensure_v2_tables(conn)
+        return conn.execute(
+            """
+            SELECT id, title, body, citations_json, created_at
+            FROM study_notes
+            WHERE session_id=?
+            ORDER BY id ASC
+            """,
+            (int(session_id),),
+        ).fetchall()
+
+
+def record_organize_run(
+    target_path: str,
+    mode: str,
+    output_path: str,
+    status: str,
+    notes: Optional[Dict[str, Any]] = None,
+) -> int:
+    with connect() as conn:
+        ensure_v2_tables(conn)
+        cur = conn.execute(
+            """
+            INSERT INTO organize_runs(target_path, mode, output_path, status, notes, created_at)
+            VALUES(?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (target_path, mode, output_path, status, json.dumps(notes or {}, ensure_ascii=False)),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
