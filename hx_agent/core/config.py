@@ -29,6 +29,23 @@ class ChunkConfig:
 
 
 @dataclass
+class LLMConfig:
+    enabled: bool = False
+    provider: str = 'openai_compatible'
+    base_url: str = 'https://api.openai.com/v1'
+    api_key_env: str = 'HX_AGENT_LLM_API_KEY'
+    model: str = 'gpt-4o-mini'
+    timeout_sec: int = 30
+    max_retries: int = 2
+    retry_backoff_ms: int = 400
+    temperature: float = 0.2
+    max_tokens: int = 1200
+    fallback_enabled: bool = True
+    circuit_breaker_fail_threshold: int = 3
+    circuit_breaker_reset_sec: int = 30
+
+
+@dataclass
 class AppConfig:
     # 路径尽量用相对路径（相对 repo root）
     db_path: str = 'kb.sqlite'
@@ -39,6 +56,7 @@ class AppConfig:
     log: LogConfig = field(default_factory=LogConfig)
     ingest: IngestConfig = field(default_factory=IngestConfig)
     chunk: ChunkConfig = field(default_factory=ChunkConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
 
 
 def default_config() -> AppConfig:
@@ -78,6 +96,25 @@ def load_config(config_path: Path) -> AppConfig:
         if k in chunk:
             setattr(cfg.chunk, k, chunk[k])
 
+    llm = data.get('llm', {})
+    for k in [
+        'enabled',
+        'provider',
+        'base_url',
+        'api_key_env',
+        'model',
+        'timeout_sec',
+        'max_retries',
+        'retry_backoff_ms',
+        'temperature',
+        'max_tokens',
+        'fallback_enabled',
+        'circuit_breaker_fail_threshold',
+        'circuit_breaker_reset_sec',
+    ]:
+        if k in llm:
+            setattr(cfg.llm, k, llm[k])
+
     return cfg
 
 
@@ -104,6 +141,21 @@ def save_default_config(config_path: Path) -> None:
             'policy_version': cfg.chunk.policy_version,
             'target_chars': cfg.chunk.target_chars,
             'overlap_chars': cfg.chunk.overlap_chars,
+        },
+        'llm': {
+            'enabled': cfg.llm.enabled,
+            'provider': cfg.llm.provider,
+            'base_url': cfg.llm.base_url,
+            'api_key_env': cfg.llm.api_key_env,
+            'model': cfg.llm.model,
+            'timeout_sec': cfg.llm.timeout_sec,
+            'max_retries': cfg.llm.max_retries,
+            'retry_backoff_ms': cfg.llm.retry_backoff_ms,
+            'temperature': cfg.llm.temperature,
+            'max_tokens': cfg.llm.max_tokens,
+            'fallback_enabled': cfg.llm.fallback_enabled,
+            'circuit_breaker_fail_threshold': cfg.llm.circuit_breaker_fail_threshold,
+            'circuit_breaker_reset_sec': cfg.llm.circuit_breaker_reset_sec,
         },
     }
     config_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')

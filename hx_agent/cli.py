@@ -5,6 +5,7 @@ import re
 import sqlite3
 import time
 from datetime import datetime
+from uuid import uuid4
 
 import typer
 
@@ -26,6 +27,7 @@ from hx_agent.index.meta_store import (
 )
 from hx_agent.ingest.chunker_md import chunk_markdown
 from hx_agent.ingest.scanner import file_sha256, iter_docs
+from hx_agent.llm.client import LLMClient
 from hx_agent.organize.service import organize_target
 from hx_agent.reformat import ReformatOptions, reformat_text
 from hx_agent.study.service import end_session, list_notes, start_session, study_ask
@@ -113,33 +115,6 @@ def init_db():
 
     print(f'[bold green]DB initialized[/bold green]: {settings.KB_DB}')
     print(f'at {datetime.now().isoformat(timespec="seconds")}')
-
-
-# # 扫描md和txt并插入files的表中
-# @app.command()
-# def ingest(path: str = "docs"):
-#     """扫描目录，扫描 md/txt 文件并入files表中。"""
-
-#     root = Path(path).resolve()
-
-#     if(not root.exists()):
-#         raise RuntimeError(f"Path not exists: {root}")
-
-#     before_count = count_files()
-#     n =0
-#     for p in iter_docs(root):
-#         stat = p.stat()
-#         sha = file_sha256(p)
-#         upsert_file(
-#             path=str(p.relative_to(root)),
-#             mtime=int(stat.st_mtime),
-#             sha256=sha,
-#             size=int(stat.st_size),
-#             ftype=p.suffix.lower().lstrip("."),
-#         )
-#         n += 1
-#         after = count_files()
-#         print(f"[green]Ingested[/green]: scanned={n}, total files={after}, after files={after}")
 
 
 @app.command()
@@ -269,9 +244,20 @@ def show(chunk_id: int):
 
 
 @app.command()
-def ask(query: str, mode: str = 'summary', topk: int = 8):
-    """复习/问答：SQLite 版 RAG（v0.1 无 LLM）。"""
-    hits = search_fts(query, topk=topk)
+def ask(
+    query: str = typer.Argument('', help='retrieval query (legacy positional style)'),
+    question: str = typer.Option('', '--question', help='natural language question for final answer'),
+    retrieve_query: str = typer.Option('', '--query', help='fts query used only for retrieval'),
+    mode: str = typer.Option('summary', '--mode'),
+    topk: int = typer.Option(8, '--topk'),
+):
+    """复习/问答：SQLite 版 RAG。"""
+    retrieval_query = retrieve_query.strip() or query.strip() or question.strip()
+    question_text = question.strip() or query.strip() or retrieval_query
+    if not retrieval_query:
+        raise RuntimeError('empty ask input: provide QUERY or --question/--query')
+
+    hits = search_fts(retrieval_query, topk=topk)
     if not hits:
         print('No hits.')
         return
@@ -301,7 +287,17 @@ def ask(query: str, mode: str = 'summary', topk: int = 8):
             context_parts.append(id2row[cid]['text'])
     context = '\n\n'.join(context_parts[:4])
 
-    ans = summarize_rule(context, mode=mode)
+    request_id = str(uuid4())
+    llm = LLMClient()
+    llm_resp = llm.answer(query=question_text, context=context, request_id=request_id, session_id=None)
+    fallback_answer = summarize_rule(context, mode=mode)
+    fallback_enabled = bool(get_ctx().cfg.llm.fallback_enabled)
+    if llm_resp.text.strip():
+        ans = llm_resp.text.strip()
+    elif fallback_enabled:
+        ans = fallback_answer
+    else:
+        ans = 'LLM failed and fallback is disabled. Please retry or check llm settings.'
 
     # citations 用 stitched（方便合并相邻），再去重
     stitched = stitch_chunks(rows, neighbor_gap=1)
@@ -315,7 +311,8 @@ def ask(query: str, mode: str = 'summary', topk: int = 8):
         seen.add(ref)
         citations.append(s)
 
-    print(f'Q: {query}')
+    print(f'Q: {question_text}')
+    print(f'retrieval_query: {retrieval_query}')
     print(f'mode={mode} topk={topk}')
     print('-' * 60)
     print(ans)
@@ -328,6 +325,16 @@ def ask(query: str, mode: str = 'summary', topk: int = 8):
             print(f'[{i}] {ref} (chunks: {ids}) | {heading}')
         else:
             print(f'[{i}] {ref} (chunks: {ids})')
+    print(
+        '\nmeta: '
+        f'request_id={request_id} '
+        f'provider={llm_resp.provider or "rule"} '
+        f'model={llm_resp.model or "rule"} '
+        f'fallback_used={not bool(llm_resp.text.strip())} '
+        f'latency_ms={llm_resp.latency_ms} '
+        f'retry_count={llm_resp.retry_count} '
+        f'total_tokens={llm_resp.total_tokens}'
+    )
 
 
 @app.command()
@@ -386,6 +393,17 @@ def study_ask_cmd(
         else:
             print(f'[{i}] {ref} (chunks: {ids})')
     print(f'\nSaved note_id={out["note_id"]} in session_id={out["session_id"]}')
+    if 'request_id' in out:
+        print(
+            'meta: '
+            f'request_id={out.get("request_id")} '
+            f'provider={out.get("provider", "rule")} '
+            f'model={out.get("model", "rule")} '
+            f'fallback_used={out.get("fallback_used", True)} '
+            f'latency_ms={out.get("latency_ms", 0)} '
+            f'retry_count={out.get("retry_count", 0)} '
+            f'total_tokens={(out.get("token_usage") or {}).get("total_tokens", 0)}'
+        )
 
 
 @study_app.command('end')
